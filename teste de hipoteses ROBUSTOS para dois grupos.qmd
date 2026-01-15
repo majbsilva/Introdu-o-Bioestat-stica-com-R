@@ -1,0 +1,226 @@
+---
+title: "Teste de Hipótese para Dois Grupos com Distribuições Não Paramétricas"
+author: "Marcelo Silva"
+format: html
+editor: visual
+---
+
+# Parte prática
+
+## Descrição do conjunto de dados
+
+O conjunto de dados `lung` (pulmão) contém informações de **sobrevivência de pacientes com câncer de pulmão avançado** do North Central Cancer Treatment Group.
+
+### Contexto do estudo
+
+O foco principal deste *dataset* para o nosso estudo é avaliar se a perda de peso (wt.loss) é diferente entre homens e mulheres (sex). No dataset, a variável sex tem dois níveis: 1=Male e 2=Female. Portanto, vamos focar nessas duas informações do banco de dados.
+
+## Carregando os pacotes necessários
+
+```{r}
+library(tidyverse)
+library(rstatix)
+```
+
+## Importando e preparando os dados
+
+```{r}
+lung <- survival::lung
+head(lung)
+```
+
+Vamos checar a variável sex para ver se ela é categórica. Para isso, pergunto ao R se é um fator (is.factor). Variáveis categóricas são chamadas de fatores (factor) no R.
+
+```{r}
+is.factor(lung$sex); lung$sex
+```
+
+Veja que ela não é uma variável categórica, mas sim uma numérica constituídas de 1 e 2. Bem, vamos rotular essa variável. Vamos chamar 1 = Male e 2 = Female. Para isso, vamos utilizar a função `mutate()` do R. E já vou aproveitar e criar o meu dataset de trabalho. Ele vai chamar **ds**.
+
+```{r}
+ds <- lung %>%
+  mutate(
+    sex = factor(sex) # Transformando em variável categórica
+  ) %>% mutate(
+    sex = ifelse(sex == 1,'Male','Female') # Criando os rótulos
+  ) %>% select(sex, wt.loss) # Selecionando somente as colunas de interesse
+head(ds)
+```
+
+Os dados possuem alguns zeros e números negativos, representando pacientes que não perderam peso e ganharam peso respectivamente. Não iremos trabalhar com esses pacientes. Portanto, vou criar um filtro para que o R exclua esses pacientes
+
+```{r}
+ds <- ds %>% filter(wt.loss > 0)
+```
+
+Agora, vamos ver se tem algum valor NA (Not annoted ou valores faltantes).
+
+```{r}
+naniar:: miss_var_summary(ds)
+```
+
+Observe que wt.loss tem 14 valores faltantes. Não faz sentido deixá-lo no banco de dados. Portanto, vamos trabalhar somente com **casos completos**, utilizando o filtro `complete.cases`.
+
+```{r}
+ds <- ds %>% filter(complete.cases(wt.loss))
+naniar:: miss_var_summary(ds)
+```
+
+Vejam que todos os valores faltantes foram removidos do estudo.
+
+## Análise dos parâmetros estatísticos
+
+Vamos analisar os parâmetros básicos de cada um dos grupos.
+
+```{r}
+ds %>% group_by(sex) %>% get_summary_stats()
+```
+
+Observamos que a diferença de médias entre os grupos é próximo de dois quilos. Podemos ver que mediana e média são diferentes, sugerindo assimetria. Vamos ver o boxplot dos dados.
+
+```{r}
+ds %>% 
+  ggplot(aes(sex,wt.loss)) +
+  geom_boxplot()
+```
+
+O boxplot nos mostra que, a distribuição dos dados dentro de cada grupo é semelhante (tamanho das caixas). Vimos que os dois grupos possuem outliers (pontos pretos no gráfico). Vamos ver quem são.
+
+## Identificação dos outliers
+
+```{r}
+ds %>% identify_outliers(wt.loss)
+```
+
+Os outliers não são erro de anotação. São simplismente pessoas que perderam mais peso. Portanto vou mantê-los.
+
+Vamos ver o qqplot para vermos os desvios de normalidade.
+
+## Investigação do tipo de distribuição
+
+```{r}
+ds %>% 
+  ggplot(aes(sample = wt.loss)) +
+  stat_qq() +
+  stat_qq_line()
+```
+
+Veja como tem pontos que se afastam da reta nas pontas. Isso sugere caudas pesadas (valores extremos), como observamos nos dados. Vamos ver o que o teste de normalidade Shapiro Wilk nos diz.
+
+```{r}
+ds %>% shapiro_test(wt.loss)
+```
+
+Vejam que o p do teste de normalidade é muito menor do que 0.05, indicando que não tenho informações suficientes para afirmar que a distribuição é normal, e portanto eu assumo a hipótese alternativa do teste de normalidade (a distribuição não é normal).
+
+## Realização do teste robusto (Yen)
+
+Esse teste traz várias vantagens:
+
+1.  Robustez: menos sensíveis a *outliers*.
+
+2.  Precisão: uso de bootstrap melhora a estimativa do p-valor e intervalo de confiança, especialmente em amostras pequenas e amostras assimétricas (com *outliers*).
+
+3.  Flexibilidade: não assumem normalidade ou homogeneidade de variâncias.
+
+Portanto, vamos chamar o pacote `WRS2` que contém a função `yuenbt()`. Os arugmentoos est = 'median' diz à função para usar como estimador a mediana, por causa da assimetria dos dados. O nboot é o número de vezes que ele realocará as amostras para adiquirir um intervalo de confiança da diferença das medianas mais robusto.
+
+```{r}
+teste_robusto <- WRS2::yuenbt(wt.loss~sex, data = ds, est = 'median', nboot = 2000)
+teste_robusto
+```
+
+Observe que o valor de p-value foi de `r teste_robusto$p.value` , maior do que 0.05, marginando a diferença estatística. Além disso, podemos observar que o intervalo de confiança foi de `r teste_robusto$conf.int`, incluindo o zero afirmando que a diferença não foi estatisticamente significativa.
+
+# Tamanho de efeito robusto (akp)
+
+Podemos avaliar o tamanho do efeito. Para isso, vamos utilizar a função `apk.effect` também do pacote `WRS2`.
+
+```{r}
+efeito_robusto <- WRS2::akp.effect(wt.loss~sex, data = ds, EQVAR = F, nboot = 2000)
+efeito_robusto
+```
+
+O efeito encontrado foi considerado fraco `r efeito_robusto$AKPeffect` com um valor de intervalo de confiança de `r efeito_robusto$AKPci`. O tamanho do efeito nos ajuda a intepretar o valor marginal de P. E, portanto, podemos afirmar que não há diferença na perda de peso entre os sexos masculinos e femininos.
+
+## Descrição dos métodos e resultados
+
+### Descrição do método de análise
+
+::: {.callout-note appearance="simple" icon="false"}
+Para comparar a perda de peso entre os sexos, levando em consideração a **assimetria** na distribuição dos dados, utilizamos o **teste de Yuen para médias aparadas** (`yuenbt()`), implementado no pacote `WRS2` do R. Esse teste é uma alternativa robusta aos testes *t* tradicionais, sendo especialmente adequado para dados com **distribuições não normais** ou **variâncias desiguais**.
+
+Para avaliar a magnitude da diferença, calculamos o **tamanho de efeito robusto** usando a função `akp.effect()` do pacote `WRS2`, com `EQVAR = FALSE` (assumindo variâncias desiguais entre os grupos) e o mesmo número de reamostragem (*n* = 2000).
+:::
+
+### Descrição dos resultados
+
+Para a descrição dos resultados, temos que mencionar as diferenças entre as médias aparadas, uma vez que foi isso utilizado pelo teste, o seu intervalo de confiança, o valor de P. Além disso, o tamanho de efeito e seu intervalo de confiança.
+
+::: {.callout-note appearance="simple" icon="false"}
+Os resultados indicam que a diferença entre as medianas observadas não pode ser atribuída ao sexo masculino ou feminino (diff = `r round(teste_robusto$diff,2)`, IC95% \[`r round(teste_robusto$conf.int,2)`\]; p = `r round(teste_robusto$p.value,2)`. O tamanho de efeito observado foi moderado (`r round(efeito_robusto$AKPeffect,2)` , IC95% \[`r round(efeito_robusto$AKPci,2)`\]
+:::
+
+Se tivéssemos utilizado o teste t e o cohen's d, qual seria o resultado. Vamos ver
+
+```{r}
+t.test(wt.loss~sex, data = ds, var.equal = F) ; effectsize::cohens_d(wt.loss~sex, data = ds, var.equal = F)
+```
+
+Observe que o valor de p ficou bem mais alto (0.25), be diferente do valor de p do teste robusto. Além disso, o valor do Cohen's d ficou bem mais baixo (-0.19).
+
+# Parte teórica
+
+## O desafio da não-normalidade e assimetria
+
+Os testes paramétricos, como o Teste *t* de Student, baseiam-se em pressupostos rígidos, sendo o mais conhecido a **normalidade da distribuição** dos dados (ou das diferenças). Quando os dados apresentam **assimetria** acentuada, têm distribuições incomuns ou contêm *outliers* influentes, a validade dos resultados de um teste paramétrico é comprometida, podendo levar a conclusões erradas.
+
+Tradicionalmente, a solução seria o uso de testes não paramétricos baseados em postos (*ranks*), como o Teste *U* de Mann-Whitney. No entanto, esses testes **transformam os dados em postos**, alterando a natureza da informação e limitando a interpretação das diferenças em termos de médias originais.
+
+## A abordagem robusta
+
+Uma alternativa moderna e preferível é o uso de **testes robustos**, que são menos sensíveis às violações dos pressupostos de normalidade e homogeneidade de variância, sem a necessidade de transformar os dados. Esses testes geralmente se concentram em comparar **medidas de tendência central mais resistentes** à assimetria, como a **mediana** ou a **média aparada** (*trimmed mean*).
+
+### Testes robustos baseados em média aparada (Teste de Yen)
+
+O **Teste de Yen (ou Teste *t*** de Yen) é um exemplo de teste robusto. Em vez de usar a média aritmética tradicional, ele utiliza a **média aparada** (comumente a 10% ou 20%). A média aparada é calculada após a remoção de uma porcentagem igual dos valores mais extremos (os maiores e os menores) de cada cauda da distribuição.
+
+-   **Vantagem:** ao descartar os valores extremos, a média aparada se torna muito mais resistente à influência de *outliers* e à assimetria, fornecendo uma estimativa mais representativa do centro da distribuição em dados não normais. O Teste de Yen então compara essas médias aparadas, sendo uma alternativa poderosa e mais precisa que o ***t*** de Student nesses cenários.
+
+    ::: callout-important
+    Na execução do teste de Yen, os *outliers* não são removidos do banco de dados.
+    :::
+
+### Testes robustos de reamostragem (Bootstrap)
+
+O **Bootstrap** é uma técnica de reamostragem não paramétrica extremamente poderosa que não assume nenhuma forma específica de distribuição (como a normal).
+
+-   **Funcionamento:** em vez de depender de fórmulas teóricas, o *bootstrap* cria milhares de novas amostras (*bootstrap samples*) a partir da amostra original, amostrando com reposição.
+
+-   **Aplicação em teste de hipótese:** o *bootstrap* é usado para estimar as estatísticas de interesse (como a diferença entre as médias ou medianas) e seus intervalos de confiança, oferecendo um **intervalo de confiança** para a diferença de médias que é mais preciso e robusto em amostras não normais. Se o intervalo de confiança dessa diferença incluir zero, a diferença não é considerada estatisticamente significativa.
+
+::: callout-note
+**Exemplos de Intervalos de cConfiança (IC 95%) para a diferença de médias**:
+
+1.  **IC 95% =** \[−3.5 a 1.2\]: neste caso, o zero (0) está incluído no intervalo. A conclusão é que **não há diferença significativa** entre os grupos.
+
+2.  **IC 95% =** \[0.8 a 4.1\]: neste caso, o zero (0) *não* está incluído. A conclusão é que **há uma diferença significativa**, e a média do primeiro grupo (μ1​) é maior que a do segundo.
+
+3.  **IC 95% =** \[−5.0 a −1.9\]: neste caso, o zero (0) *não* está incluído. A conclusão é que **há uma diferença significativa**, e a média do primeiro grupo (μ1​) é menor que a do segundo.
+:::
+
+### A importância do tamanho do efeito
+
+Ao lidar com distribuições não normais e especialmente com o uso de testes robustos, o **tamanho do efeito** torna-se ainda mais crucial.
+
+O p-valor apenas informa se a diferença observada é **estatisticamente significativa** (se é improvável ter ocorrido por acaso), mas não diz nada sobre a sua **magnitude** ou **relevância prática**. O tamanho do efeito preenche essa lacuna.
+
+-   **Objetivo:** quantificar a **magnitude da diferença** entre os grupos em uma escala padronizada, permitindo que a diferença seja interpretada independentemente do tamanho da amostra.
+
+-   **Medidas robustas:** para comparações de grupos não normais, é preferível utilizar medidas de tamanho do efeito que são robustas à assimetria. O **Hedges’g** é uma escolha popular, pois aplica uma correção para o viés em amostras pequenas, sendo mais preciso que o Cohen’s d. Alternativamente, podem ser utilizados tamanhos de efeito baseados em **percentis ou *rankings***, que são menos sensíveis à forma da distribuição.
+
+No ambiente de programação **R**, existem pacotes dedicados que facilitam o cálculo de tamanhos de efeito robustos, indo além dos métodos tradicionais. O pacote `effectsize` é amplamente utilizado e permite calcular o **Hedges’g** e outras medidas.
+
+Além disso, quando se utiliza o **Bootstrap** ou se compara medidas centrais robustas (como a média aparada), o pacote **`WRS2`** (ou *Robust Statistical Methods*) é a ferramenta ideal. Ele oferece funções para calcular o **tamanho do efeito robusto** diretamente, como a diferença padronizada entre as médias aparadas, que é a medida mais apropriada para acompanhar o Teste de Yen. Isso garante que a métrica de magnitude utilizada esteja alinhada com a medida de tendência central robusta empregada no teste de hipótese.
+
+Em resumo, a combinação de testes robustos (como o Teste de Yen ou a análise *bootstrap*) com uma interpretação obrigatória do **tamanho do efeito** oferece uma metodologia estatística completa e confiável para comparar dois grupos quando os pressupostos paramétricos são violados.

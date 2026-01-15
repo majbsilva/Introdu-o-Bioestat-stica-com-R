@@ -1,0 +1,82 @@
+$LOGRANK
+Call:
+survdiff(formula = surv_obj ~ grupo, data = sobrevida, rho = 0)
+
+           N Observed Expected (O-E)^2/E (O-E)^2/V
+grupo=ctrl 6        4     1.44      4.57      7.31
+grupo=trat 6        3     5.56      1.18      7.31
+
+ Chisq= 7.3  on 1 degrees of freedom, p= 0.007 
+
+$PETO_PETO
+Call:
+survdiff(formula = surv_obj ~ grupo, data = sobrevida, rho = 1)
+
+           N Observed Expected (O-E)^2/E (O-E)^2/V
+grupo=ctrl 6     3.45     1.27      3.74      6.86
+grupo=trat 6     1.43     3.61      1.32      6.86
+
+ Chisq= 6.9  on 1 degrees of freedom, p= 0.009 
+
+$TARONE_WARE
+Call:
+survdiff(formula = surv_obj ~ grupo, data = sobrevida, rho = 0.5)
+
+           N Observed Expected (O-E)^2/E (O-E)^2/V
+grupo=ctrl 6     3.71     1.35      4.12       7.1
+grupo=trat 6     2.04     4.40      1.27       7.1
+
+ Chisq= 7.1  on 1 degrees of freedom, p= 0.008 
+
+$COX_SIMPLES
+Call:
+coxph(formula = Surv(time, status) ~ age + sex, data = lung)
+
+  n= 228, number of events= 165 
+
+               coef exp(coef)  se(coef)      z Pr(>|z|)   
+age        0.017045  1.017191  0.009223  1.848  0.06459 . 
+sexFemale -0.513219  0.598566  0.167458 -3.065  0.00218 **
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+          exp(coef) exp(-coef) lower .95 upper .95
+age          1.0172     0.9831    0.9990    1.0357
+sexFemale    0.5986     1.6707    0.4311    0.8311
+
+Concordance= 0.603  (se = 0.025 )
+Likelihood ratio test= 14.12  on 2 df,   p=9e-04
+Wald test            = 13.47  on 2 df,   p=0.001
+Score (logrank) test = 13.72  on 2 df,   p=0.001
+
+
+$COX_INTERACAO
+Call:
+coxph(formula = Surv(time, status) ~ age * sex, data = lung)
+
+  n= 228, number of events= 165 
+
+                   coef exp(coef)  se(coef)      z Pr(>|z|)  
+age            0.020343  1.020551  0.011395  1.785   0.0742 .
+sexFemale      0.095322  1.100013  1.228718  0.078   0.9382  
+age:sexFemale -0.009689  0.990358  0.019414 -0.499   0.6177  
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+              exp(coef) exp(-coef) lower .95 upper .95
+age              1.0206     0.9799   0.99801     1.044
+sexFemale        1.1000     0.9091   0.09897    12.226
+age:sexFemale    0.9904     1.0097   0.95338     1.029
+
+Concordance= 0.602  (se = 0.026 )
+Likelihood ratio test= 14.37  on 3 df,   p=0.002
+Wald test            = 14.12  on 3 df,   p=0.003
+Score (logrank) test = 14.56  on 3 df,   p=0.002
+
+
+$PRESSUPOSTOS
+       chisq df    p
+age    0.209  1 0.65
+sex    2.608  1 0.11
+GLOBAL 2.771  2 0.25
+
