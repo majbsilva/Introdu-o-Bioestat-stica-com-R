@@ -1,203 +1,206 @@
-# ======================================================
-# Módulo 3 – Estatística Descritiva e Visualização
-# ======================================================
+# ==============================================================================
+# Módulo 3: Estatística Descritiva e Visualização de Dados
+# ==============================================================================
 
-## Carregando pacotes
-library(tidyverse) #ggplot
-library(janitor) # Tabelas de frequência
-library(modelsummary)
-library(pastecs)
+# Carregando pacotes essenciais
+library(tidyverse)    # Manipulação (dplyr) e gráficos (ggplot2)
+library(modelsummary) # Função datasummary_skim e balance
+library(gtsummary)    # Função tbl_summary para tabelas biomédicas
+library(ggpubr)       # Função stat_compare_means
+library(DescTools)    # Função Desc
+library(rstatix)      # Testes de Shapiro, Levene, ANOVA e Tukey
+library(ggstatsplot)  # Gráficos estatísticos complexos (p e p2)
+library(patchwork)    # Combinação de gráficos (p + p2)
 
+# ------------------------------------------------------------------------------
+# Exploração Inicial (Dataset mtcars)
+# ------------------------------------------------------------------------------
 
-Desc(mtcars)
+# Resumo estatístico completo do dataset mtcars
+mtcars %>% Desc()
 
+# Resumos específicos com modelsummary
+mtcars %>% datasummary_skim()
+datasummary_balance(mpg ~ vs, mtcars)
 
-datasummary_skim(mtcars)
-datasummary_balance(mpg~vs, mtcars)
+# Resumos específicos e estatística com o gtsummary
+mtcars %>% 
+  select(mpg,cyl,vs, am, hp, wt) %>% 
+  tbl_summary(by = vs) %>% 
+  add_p()
 
-## 📌 Seção 3.1 – Estatística descritiva
+# ------------------------------------------------------------------------------
+# Seção 3.1: Estatística descritiva (Dataset PlantGrowth)
+# ------------------------------------------------------------------------------
 
-# Carregando dataset # do pacote datastes, PlantGrowth
+# Carregando dataset nativo
 plant <- PlantGrowth
-glimpse(plant)
+plant %>% glimpse()
 
-# Obtendo dados descritivos da tabela
 
-datasummary_skim(plant)
-datasummary_balance(weight~group,plant) 
+# Resumos de balanço entre grupos
+datasummary_balance(weight~group,plant)
+plant %>% tbl_summary(by = group) %>% 
+  add_p()
 
-# Obtendo e visualizando distribuição
 
-by(plant$weight, plant$group,shapiro.test)
+# ------------------------------------------------------------------------------
+# Avaliação de distribuição (Normalidade)
+# ------------------------------------------------------------------------------
 
+# Teste de Shapiro-Wilk por grupo
+plant %>% 
+  group_by(group) %>% 
+  shapiro_test(weight)
+
+# Gráfico QQ-Plot para verificar normalidade visualmente
 plant %>% 
   ggplot(aes(sample = weight)) +
   stat_qq() +
   stat_qq_line() +
-  facet_grid(~group)
+  facet_grid(~group) +
+  theme_bw()
 
+# Histograma de distribuição
 plant %>% 
   ggplot(aes(x = weight)) +
-  geom_histogram() +
-  facet_grid(~group)
+  geom_histogram(bins = 10, fill = "steelblue", color = "white") +
+  facet_grid(~group) +
+  theme_light()
+
+# ------------------------------------------------------------------------------
+# Verificação e remoção de outliers
+# ------------------------------------------------------------------------------
+
+# Identificação via Boxplot
+boxplot_info <- boxplot(weight ~ group, data = plant)
+boxplot_info$out
+
+# Remoção manual conforme definido no protocolo original
+plant <- plant[plant$weight != 6.03, ]
 
 
-# Verificando outlier
+# ------------------------------------------------------------------------------
+# Avaliação da Homogeneidade e ANOVA
+# ------------------------------------------------------------------------------
 
-boxplot <- boxplot(weight~group,data = plant)
-boxplot$out
+# Teste de Levene para homogeneidade de variância
+plant %>% levene_test(weight ~ group, center = mean)
 
-plant <- plant[plant$weight != 6.03,]
-plant <- plant[plant$weight != 5.87,]
+# ANOVA com cálculo de Tamanho do Efeito (Partial Eta Squared - PES)
+# white.adjust = F assume variâncias homogêneas
+anova_res <- plant %>% anova_test(weight ~ group, effect.size = 'pes', white.adjust = FALSE)
+print(anova_res)
 
-# AVALIANDO A DIFERENÇA ENTRE OS GRUPOS
+# Realizando o teste de post-hoc (Tukey)
+plant %>% tukey_hsd(weight ~ group) %>% view()
 
-library(rstatix) # Levene test
+# Visualizando o gráfico com o resultado da estatistica
 
-## Avaliando a homogeneidade da variância entre grupos
+group_compar <- list(
+  c("ctrl", "trt1"),
+  c("ctrl", "trt2"),
+  c("trt1", "trt2")
+)
 
-plant %>% levene_test(weight~group, center = mean)
+plant %>% 
+  ggplot(aes(x = group, y = weight)) +
+  geom_boxplot(outliers = F) +
+  stat_compare_means(comparisons = group_compar) +
+  theme_minimal()
 
-anova <- plant %>% anova_test(weight~group, white.adjust = F) # white.adjust = F fala para a função que os grupos são homogêneos.
-anova
+# ------------------------------------------------------------------------------
+# Seção 3.2: Visualização avançada com ggstatsplot
+# ------------------------------------------------------------------------------
 
-### Sobre o cálculo do tamanho do efeito. 
-# Podemos avaliar o tamanho do efeito da variação do tratamento no peso. Utilizar o pes (partial eta squared) porque ele leva em consideraçao o número de fatores partial eta = SS entre grupos ? (SS entre grupos + SS dentro dos grupos)
-
-anova <- plant %>% anova_test(weight~group, effect.size = 'pes')
-anova
-
-## Realizando o post-test
-
-plant %>% tukey_hsd(weight~group)
-
-## 📌 Seção 3.2 – Visualização com ggstatsplot
-
-library(ggstatsplot)
-
+# Criando o primeiro gráfico (PlantGrowth)
 p <- ggbetweenstats(
-  plant,
-  group,
-  weight,
+  data = plant,
+  x = group,
+  y = weight,
   type = "parametric",
   pairwise.display = "significant",
   p.adjust.method = "bonferroni",
   effsize.type = "eta",
-  bf.prior = 0.707,
-  bf.message = F,
+  bf.message = FALSE,
   results.subtitle = TRUE,
-  xlab = '',
-  ylab = 'Weight (lb)',
-  caption = NULL,
-  title = NULL,
-  subtitle = NULL,
-  digits = 2L,
-  var.equal = T,
-  conf.level = 0.95,
-  nboot = 100L,
-  tr = 0.2,
-  centrality.plotting = TRUE,
-  centrality.type = 'type',
+  xlab = "Experimental Group",
+  ylab = "Weight (lb)",
   centrality.point.args = list(size = 5, color = "darkred"),
-  centrality.label.args = list(size = 5, nudge_x = 0.4, segment.linetype = 4,
-                               min.segment.length = 0),
-  point.args = list(position = ggplot2::position_jitterdodge(dodge.width = 0.6), alpha =
-                      0.8, size = 3, stroke = 0, na.rm = TRUE),
-  boxplot.args = list(width = 0.2, alpha = 0.2, na.rm = TRUE),
-  violin.args = list(width = 0, alpha = 0.2, na.rm = TRUE),
-  ggsignif.args = list(textsize = 7, tip_length = 0.03, na.rm = TRUE),
-  ggtheme = ggstatsplot::theme_ggstatsplot(),
-  package = "RColorBrewer",
-  palette = "Dark2",
-  ggplot.component = NULL
+  point.args = list(position = position_jitterdodge(dodge.width = 0.6), alpha = 0.8, size = 3),
+  boxplot.args = list(width = 0.2, alpha = 0.2),
+  violin.args = list(width = 0, alpha = 0.2),
+  ggtheme = theme_ggstatsplot(),
+  palette = "Dark2"
 )
 
+# Ajustes estéticos finais no Plot 1
 p <- p + scale_x_discrete(labels = c('Control', 'Treatment 1', 'Treatment 2')) +
   theme(
-  plot.subtitle = element_text(size = 20),
-  axis.title = element_text(size = 26),
-  axis.text = element_text(size = 24, color = 'black', face = 'bold')
-)
-p
+    plot.subtitle = element_text(size = 14),
+    axis.title = element_text(size = 16),
+    axis.text = element_text(size = 12, color = 'black', face = 'bold')
+  )
 
-ggsave(
-  filename = 'Módulo 3/plot.png',
-  plot = p,
-  height = 9,
-  width = 10,
-  dpi = 300
-)
+# ------------------------------------------------------------------------------
+# Seção 3.3: Análise de Dados Simulados (Plant2)
+# ------------------------------------------------------------------------------
 
+# Gerando dados fictícios
+set.seed(42)
+weight_sim <- rnorm(30, 6, 1)
+group_sim <- rep(c('ctrl', 'trt1', 'trt2'), each = 10)
 
-## PLOT 2 - PLANTA 2
+plant2 <- data.frame(group = factor(group_sim), weight = as.numeric(weight_sim))
 
-weight <- rnorm(30, 6, 1)
-group <- rep(c('ctrl', 'trt1', 'trt2'), each = 10)
-
-plant2 <- data.frame(cbind(group,weight))
-
-plant2$group = factor(plant2$group)
-plant2$weight = as.numeric(plant2$weight)
-
-## CRIANDO O GRÁFICO
-
+# Criando o segundo gráfico (Plant2)
 p2 <- ggbetweenstats(
-  plant2,
-  group,
-  weight,
+  data = plant2,
+  x = group,
+  y = weight,
   type = "parametric",
   pairwise.display = "significant",
   p.adjust.method = "bonferroni",
   effsize.type = "eta",
-  bf.prior = 0.707,
-  bf.message = F,
+  bf.message = FALSE,
   results.subtitle = TRUE,
-  xlab = '',
-  ylab = 'Weight (lb)',
-  caption = NULL,
-  title = NULL,
-  subtitle = NULL,
-  digits = 2L,
-  var.equal = T,
-  conf.level = 0.95,
-  nboot = 100L,
-  tr = 0.2,
-  centrality.plotting = TRUE,
-  centrality.type = 'type',
+  xlab = "Experimental Group",
+  ylab = "Weight (lb)",
   centrality.point.args = list(size = 5, color = "darkred"),
-  centrality.label.args = list(size = 5, nudge_x = 0.4, segment.linetype = 4,
-                               min.segment.length = 0),
-  point.args = list(position = ggplot2::position_jitterdodge(dodge.width = 0.6), alpha =
-                      0.8, size = 3, stroke = 0, na.rm = TRUE),
-  boxplot.args = list(width = 0.2, alpha = 0.2, na.rm = TRUE),
-  violin.args = list(width = 0, alpha = 0.2, na.rm = TRUE),
-  ggsignif.args = list(textsize = 7, tip_length = 0.03, na.rm = TRUE),
-  ggtheme = ggstatsplot::theme_ggstatsplot(),
-  package = "RColorBrewer",
-  palette = "Dark2",
-  ggplot.component = NULL
+  point.args = list(position = position_jitterdodge(dodge.width = 0.6), alpha = 0.8, size = 3),
+  boxplot.args = list(width = 0.2, alpha = 0.2),
+  violin.args = list(width = 0, alpha = 0.2),
+  ggtheme = theme_ggstatsplot(),
+  palette = "Set1"
 )
 
+# Ajustes estéticos finais no Plot 2
 p2 <- p2 + scale_x_discrete(labels = c('Control', 'Treatment 1', 'Treatment 2')) +
   theme(
-    plot.subtitle = element_text(size = 20),
-    axis.title = element_text(size = 26),
-    axis.text = element_text(size = 24, color = 'black', face = 'bold')
+    plot.subtitle = element_text(size = 14),
+    axis.title = element_text(size = 16),
+    axis.text = element_text(size = 12, color = 'black', face = 'bold')
   )
-p2
 
-ggsave(
-  filename = 'Módulo 3/plot2.png',
-  plot = p2,
-  height = 9,
-  width = 10,
-  dpi = 300
-)
+# ------------------------------------------------------------------------------
+# Seção 3.4: Composição final e exportação
+# ------------------------------------------------------------------------------
 
-p <- p + labs(tag = '(A)') + theme(plot.tag = element_text(size = 18))
+# Adicionando tags de identificação para painéis de figura
+p <- p + labs(tag = '(A)') + theme(plot.tag = element_text(size = 18, face = "bold"))
+p2 <- p2 + labs(tag = '(B)') + theme(plot.tag = element_text(size = 18, face = "bold"))
 
-p2 <- p2 + labs(tag = '(B)') + theme(plot.tag = element_text(size = 18))
+# Combinando os gráficos com patchwork
+layout_final <- p + p2
 
-library(patchwork)
+# Visualizar
+print(layout_final)
 
-p + p2
+# Exportação para diretório (Certifique-se que a pasta 'Modulo 3' existe)
+# ggsave(
+#   filename = 'plot_composto.png',
+#   plot = layout_final,
+#   height = 9,
+#   width = 18,
+#   dpi = 300
+# )
