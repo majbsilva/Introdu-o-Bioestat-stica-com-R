@@ -1,0 +1,189 @@
+---
+title: "Módulo 6: Testes Não Paramétricos"
+author: "Marcelo Silva"
+lang: pt
+format: 
+  html:
+    theme: paper
+    toc: true
+    toc-title: "Navegação"
+    toc-location: left
+    toc-depth: 4
+    number-sections: false
+    code-copy: true
+    code-overflow: wrap
+    code-line-numbers: true
+    code-block-bg: true
+    code-fold: true
+    code-tools: false
+    code-link: true
+    fig-cap-location: bottom
+    fig-width: 6
+    fig-height: 3.5
+    fig-align: center
+    df-print: paged
+    smooth-scroll: true
+    citations-hover: true
+    title-block-banner: true
+editor: visual
+execute: 
+  error: false
+  warning: false
+  message: false
+  cache: true
+---
+
+## Carregar pacotes
+
+```{r}
+#| label: Carregamento pacotes
+library(tidyverse)   # Manipulação e ggplot
+library(rstatix)     # Testes estatísticos tidy
+library(ggstatsplot)  # Visualização com estatística integrada
+library(ggpubr)      # Complemento para gráficos bioestatísticos
+```
+
+## Seção 6.1: Introdução aos Ranks (Postos)
+
+Os testes não paramétricos não utilizam os valores brutos, mas sim a sua ordem (ranks). Isso os torna imunes a outliers extremos.
+
+```{r}
+exemplo_ranks <- c(5, 20, 100, 1000)
+rank(exemplo_ranks) 
+```
+
+## Seção 6.2: Teste de Mann-Whitney (Wilcoxon Rank-Sum)
+
+**Objetivo:** comparar 2 grupos independentes quando a normalidade falha.
+
+```{r}
+#| label: carregar banco de dados
+# Carregar o bando de dados
+ds <- readxl::read_xlsx("dados_nao_normais.xlsx")
+```
+
+### 1. Verificação dos pressupostos
+
+::: callout-note
+Em amostras muito pequenas, o teste de Shapiro-Wilk é rigoroso.
+:::
+
+```{r}
+ds %>%
+  group_by(tratamento) %>%
+  shapiro_test(expressao_gene)
+```
+
+### 2. Gráfico Q-Q plot para verificar normalidade visualmente
+
+```{r}
+ds %>% 
+  ggplot(aes(sample = expressao_gene, color = tratamento)) +
+  stat_qq() +
+  stat_qq_line() +
+  facet_wrap(~tratamento) +
+  labs(title = "QQ-Plot: Expressão Gênica por Tratamento") +
+  theme_minimal()
+```
+
+::: callout-tip
+Posso observar o qqplot removendo valores discrepantes.
+:::
+
+```{r}
+ds %>% filter(expressao_gene != 500) %>% 
+  ggplot(aes(sample = expressao_gene, color = tratamento)) +
+  stat_qq() +
+  stat_qq_line() +
+  facet_wrap(~tratamento) +
+  labs(title = "QQ-Plot: Expressão Gênica por Tratamento") +
+  theme_minimal()
+```
+
+### 3. Execução do teste de Mann Whitney
+
+Comparando Controle e Droga A.
+
+H0: A expressão gênica não é influenciada pela Droga A.
+
+```{r}
+ds %>% filter(tratamento %in% c('Controle', "DrogA")) %>%
+  wilcox_test(expressao_gene ~ tratamento, paired = FALSE) %>%
+  add_significance()
+```
+
+Comparando Controle e Droga B
+
+```{r}
+ds %>% filter(tratamento %in% c('Controle', "DrogB")) %>%
+  wilcox_test(expressao_gene ~ tratamento, paired = FALSE) %>%
+  add_significance()
+```
+
+## Seção 6.3: Teste de Kruskal-Wallis e Post-hoc de Dunn
+
+Comparando todos os grupos,
+
+H0: A expressão gênica não é influenciada pelo uso ou não das drogas.
+
+```{r}
+#| label: kruskall_Wallis
+ds %>% kruskal_test(expressao_gene ~ tratamento)
+```
+
+Realizando o pós-test
+
+::: callout-note
+Teste de Dunn (Dunn's Test): é o padrão ouro e o mais utilizado em publicações científicas. Ele realiza comparações par a par baseadas nos postos (ranks) e já incorpora métodos de correção para múltiplos testes (como Bonferroni ou Holm).
+:::
+
+```{r}
+#| label: teste de dunn
+ds %>% dunn_test(expressao_gene ~ tratamento, p.adjust.method = "holm")
+```
+
+## Seção 6.4: Calculando tamanho do efeito
+
+### Tamanho de efeito para o Wilcox test (Mann Whitney)
+
+```{r}
+#| label: filtrando droga A e calculando tamnho efeito
+ds_filtered_drogaA <- ds %>% filter(tratamento %in% c('Controle', "DrogA"))
+ds_filtered_drogaA %>% wilcox_effsize(expressao_gene~tratamento)
+
+```
+
+```{r}
+#| label: filtrando droga B e calculando tamnho efeito
+ds_filtered_drogaB <- ds %>% filter(tratamento %in% c('Controle', "DrogB"))
+ds_filtered_drogaB %>% wilcox_effsize(expressao_gene~tratamento)
+```
+
+### Tamanho de efeito para o kruskall Wallis
+
+```{r}
+#| label: tamanho de efeito para kruskall wallis
+ds %>% kruskal_effsize(expressao_gene~tratamento, ci = T)
+```
+
+## 3. Visualização com estatística integrada
+
+```{r}
+ggbetweenstats(
+  data = ds,
+  x = tratamento,
+  y = expressao_gene,
+  type = "nonparametric", # Ativa o teste de Mann-Whitney automaticamente
+  effsize.type = "unbiased",
+  plot.type = "box",
+  title = "Teste de Mann-Whitney (n=10/grupo)",
+  messages = FALSE
+)
+```
+
+## Exercício Final – Módulo 6
+
+1.  Carregue o dataset 'chickwts'.
+2.  Selecione apenas 3 tipos de dietas (ex: 'soybean', 'sunflower', 'linseed').
+3.  Aplique o teste de Kruskal-Wallis para ver se o peso médio difere.
+4.  Caso p \< 0.05, identifique quais pares de dietas são diferentes entre si.

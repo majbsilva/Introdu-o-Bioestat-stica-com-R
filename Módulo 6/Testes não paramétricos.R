@@ -29,9 +29,19 @@ ds <- readxl::read_xlsx("Módulo 6/dados_nao_normais.xlsx")
 
 # 1. Verificação de pressupostos (Normalidade)
 # Nota: em amostras muito pequenas, o teste de Shapiro-Wilk é rigoroso.
-ds %>%
+ds %>% filter(expressao_gene != 500) %>% 
   group_by(tratamento) %>%
   shapiro_test(expressao_gene)
+
+# 2. Gráfico Q-Q plot para verificar normalidade visualmente
+
+ds %>% 
+  ggplot(aes(sample = expressao_gene, color = tratamento)) +
+  stat_qq() +
+  stat_qq_line() +
+  facet_wrap(~tratamento) +
+  labs(title = "QQ-Plot: Expressão Gênica por Tratamento") +
+  theme_minimal()
 
 # 2. Execução do Teste de Mann-Whitney
 # Comparando Controle e Droga A
@@ -62,6 +72,20 @@ ds %>% kruskal_test(expressao_gene ~ tratamento)
 
 ds %>% dunn_test(expressao_gene ~ tratamento, p.adjust.method = "holm")
 
+# ------------------------------------------------------------------------------
+# Seção 6.4: Calculando tamanho do efeito
+# ------------------------------------------------------------------------------
+
+# Tamanho de efeito para o Wilcox test (Mann Whitney)
+
+ds_filtered <- ds %>% filter(tratamento %in% c('Controle', "DrogB"))
+  
+ds_filtered %>% wilcox_effsize(expressao_gene ~ tratamento, ci = TRUE)
+
+# Tamanho de efeito para o kruskall Wallis
+
+ds %>% kruskal_effsize(expressao_gene ~ tratamento, ci = TRUE)
+
 
 # 3. Visualização com estatística integrada
 ggbetweenstats(
@@ -69,32 +93,11 @@ ggbetweenstats(
   x = tratamento,
   y = expressao_gene,
   type = "nonparametric", # Ativa o teste de Mann-Whitney automaticamente
+  effsize.type = "unbiased",
   plot.type = "box",
   title = "Teste de Mann-Whitney (n=10/grupo)",
   messages = FALSE
 )
-
-
-
-# Objetivo: Comparar 3 ou mais grupos independentes.
-# Exemplo: Dataset 'ToothGrowth' (3 doses de Vitamina C).
-
-data("ToothGrowth")
-ToothGrowth$dose <- as.factor(ToothGrowth$dose)
-
-# 1. Teste de Kruskal-Wallis (Omnibus)
-# H0: As medianas de crescimento dentário são idênticas entre as doses.
-res_kruskal <- ToothGrowth %>%
-  kruskal_test(len ~ dose)
-
-print(res_kruskal)
-
-# 2. Teste Post-hoc de Dunn
-# Realizado apenas se o Kruskal-Wallis for significativo (p < 0.05).
-res_dunn <- ToothGrowth %>%
-  dunn_test(len ~ dose, p.adjust.method = "bonferroni")
-
-print(res_dunn)
 
 
 # ------------------------------------------------------------------------------
