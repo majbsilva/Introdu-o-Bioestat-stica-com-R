@@ -1,57 +1,107 @@
-# ======================================================
-# Módulo 6 – Testes não paramétricos
-# ======================================================
+# ==============================================================================
+# Módulo 6: Testes Não Paramétricos
+# ==============================================================================
 
-# 📚 Neste módulo, exploramos testes não paramétricos — usados quando os pressupostos de normalidade e/ou homogeneidade de variâncias não são atendidos.
-# Esses testes trabalham com **ranks** (posições dos valores ordenados) em vez dos próprios valores, sendo mais robustos a outliers e distribuições assimétricas.
+# Carregar pacotes necessários
+library(tidyverse)   # Manipulação e ggplot
+library(rstatix)     # Testes estatísticos tidy
+library(ggstatsplot)  # Visualização com estatística integrada
+library(ggpubr)      # Complemento para gráficos bioestatísticos
 
-## 🔍 Por que transformar dados em Ranks?
-# ➤ Em vez de comparar médias, os testes não paramétricos comparam **posições relativas** (ranks).
-# ➤ Exemplo: valores 5, 20, 100 têm ranks 1, 2, 3 respectivamente.
-# ➤ Isso reduz o impacto de valores extremos e permite comparações mais robustas sem normalidade.
+# ------------------------------------------------------------------------------
+# Seção 6.1: Introdução aos Ranks (Postos)
+# ------------------------------------------------------------------------------
 
-## 📌 Seção 6.1 – Teste de Mann-Whitney (Wilcoxon rank-sum)
+# Os testes não paramétricos não utilizam os valores brutos, mas sim a sua
+# ordem (ranks). Isso os torna imunes a outliers extremos.
 
-# 🎯 Objetivo: comparar dois grupos independentes quando a normalidade não é assumida
-# Equivalente não paramétrico do teste t
-# H0: distribuições dos dois grupos são iguais
+exemplo_ranks <- c(5, 20, 100, 1000)
+rank(exemplo_ranks) 
 
-# 🔍 Teste de Mann-Whitney
-wilcox.test(idade ~ grupo_idade, data = dados)
+# ------------------------------------------------------------------------------
+# Seção 6.2: Teste de Mann-Whitney (Wilcoxon Rank-Sum)
+# ------------------------------------------------------------------------------
 
-# 📈 Gráfico para visualização
-library(ggpubr)
-ggboxplot(dados, x = "grupo_idade", y = "idade",
-          color = "grupo_idade", palette = "jco",
-          add = "jitter") +
-  labs(title = "📦 Boxplot para o Teste de Mann-Whitney")
+# Objetivo: Comparar 2 grupos independentes quando a normalidade falha.
+# Exemplo: Dataset 'ds' (Efeito da droga A na expressão de um determinado gene).
+
+ds <- readxl::read_xlsx("Módulo 6/dados_nao_normais.xlsx")
+
+# 1. Verificação de pressupostos (Normalidade)
+# Nota: em amostras muito pequenas, o teste de Shapiro-Wilk é rigoroso.
+ds %>%
+  group_by(tratamento) %>%
+  shapiro_test(expressao_gene)
+
+# 2. Execução do Teste de Mann-Whitney
+# Comparando Controle e Droga A
+# H0: A expressão gênica não é influenciada pela Droga A.
+
+ds %>% filter(tratamento %in% c('Controle', "DrogA")) %>%
+  wilcox_test(expressao_gene ~ tratamento, paired = FALSE) %>%
+  add_significance()
+
+# Comparando Controle e Droga B
+
+ds %>% filter(tratamento %in% c('Controle', "DrogB")) %>%
+  wilcox_test(expressao_gene ~ tratamento, paired = FALSE) %>%
+  add_significance()
 
 
-## 📌 Seção 6.2 – Teste de Kruskal-Wallis
+# ------------------------------------------------------------------------------
+# Seção 6.3: Teste de Kruskal-Wallis e Post-hoc de Dunn
+# ------------------------------------------------------------------------------
 
-# 🎯 Objetivo: comparar 3 ou mais grupos independentes sem assumir normalidade
-# Equivalente não paramétrico da ANOVA
-# H0: as distribuições dos grupos são iguais
+# Comparando todos os grupos
+# H0: A expressão gênica não é influenciada pelo uso ou não das drogas.
 
-# 🔍 Teste de Kruskal-Wallis
-kruskal.test(idade ~ grupo, data = dados)
+ds %>% kruskal_test(expressao_gene ~ tratamento)
 
-# 📈 Gráfico
-ggboxplot(dados, x = "grupo", y = "idade",
-          color = "grupo", palette = "Dark2",
-          add = "jitter") +
-  labs(title = "📦 Boxplot para Kruskal-Wallis")
+# Realziando o pós-test
+# Teste de Dunn (Dunn's Test): É o padrão ouro e o mais utilizado em publicações científicas. Ele realiza comparações par a par baseadas nos postos (ranks) e já incorpora métodos de correção para múltiplos testes (como Bonferroni ou Holm).
 
-# ➕ Se significativo, realizar testes post-hoc com ajuste de p-valor
-pairwise.wilcox.test(dados$idade, dados$grupo, p.adjust.method = "bonferroni")
+ds %>% dunn_test(expressao_gene ~ tratamento, p.adjust.method = "holm")
 
 
-## 📝 Exercício Final – Módulo 6
+# 3. Visualização com estatística integrada
+ggbetweenstats(
+  data = ds,
+  x = tratamento,
+  y = expressao_gene,
+  type = "nonparametric", # Ativa o teste de Mann-Whitney automaticamente
+  plot.type = "box",
+  title = "Teste de Mann-Whitney (n=10/grupo)",
+  messages = FALSE
+)
 
-# 1. Verifique se os dados de idade são normalmente distribuídos nos grupos.
-# 2. Se não forem, aplique o teste de Mann-Whitney (2 grupos) ou Kruskal-Wallis (3+ grupos).
-# 3. Construa um gráfico com ggboxplot para ilustrar os grupos.
-# 4. Se o Kruskal-Wallis for significativo, realize comparações múltiplas com correção de p-valor.
-# 5. Interprete os resultados e compare com os testes paramétricos do módulo anterior.
 
-# ✅ Fim do Módulo 6 – Testes não paramétricos
+
+# Objetivo: Comparar 3 ou mais grupos independentes.
+# Exemplo: Dataset 'ToothGrowth' (3 doses de Vitamina C).
+
+data("ToothGrowth")
+ToothGrowth$dose <- as.factor(ToothGrowth$dose)
+
+# 1. Teste de Kruskal-Wallis (Omnibus)
+# H0: As medianas de crescimento dentário são idênticas entre as doses.
+res_kruskal <- ToothGrowth %>%
+  kruskal_test(len ~ dose)
+
+print(res_kruskal)
+
+# 2. Teste Post-hoc de Dunn
+# Realizado apenas se o Kruskal-Wallis for significativo (p < 0.05).
+res_dunn <- ToothGrowth %>%
+  dunn_test(len ~ dose, p.adjust.method = "bonferroni")
+
+print(res_dunn)
+
+
+# ------------------------------------------------------------------------------
+# Exercício Final – Módulo 6
+# ------------------------------------------------------------------------------
+
+# 1. Carregue o dataset 'chickwts'.
+# 2. Selecione apenas 3 tipos de dietas (ex: 'soybean', 'sunflower', 'linseed').
+# 3. Aplique o teste de Kruskal-Wallis para ver se o peso médio difere.
+# 4. Caso p < 0.05, identifique quais pares de dietas são diferentes entre si.
